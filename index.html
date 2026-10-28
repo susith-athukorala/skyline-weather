@@ -309,7 +309,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 /* ================= CONFIG ================= */
 const CONFIG = {
   // Your Cloudflare Worker address (no trailing slash). The API keys live there, not here.
-  proxy: 'https://skyline-weather.susithathukorala-8d7.workers.dev',
+  proxy: 'https://skyline-weather.YOUR-SUBDOMAIN.workers.dev',
   home: { lat: -34.8808, lon: 138.6614 },
   cacheMinutes: 10,
   refreshMinutes: 10
@@ -325,7 +325,7 @@ const store = {
 const S = {
   unit: store.get('unit') || 'C',
   loc: store.get('loc') || { ...CONFIG.home },
-  cur: null, fc: null, aq: null, windy: null, day: null, stale: null
+  cur: null, fc: null, aq: null, windy: null, day: null, stale: null, rev: null
 };
 
 /* ---------- units & formatting ---------- */
@@ -346,6 +346,15 @@ const dirName = deg => COMPASS[Math.round(deg / 22.5) % 16];
 const BEAUFORT = [[0.5,'Calm'],[1.6,'Light air'],[3.4,'Light breeze'],[5.5,'Gentle breeze'],[8,'Moderate breeze'],
   [10.8,'Fresh breeze'],[13.9,'Strong breeze'],[17.2,'Near gale'],[20.8,'Gale'],[24.5,'Strong gale'],[28.5,'Storm'],[32.7,'Violent storm'],[999,'Hurricane force']];
 const beaufort = ms => BEAUFORT.find(b => ms < b[0])[1];
+// Australian states shown as their usual short form; elsewhere the country code is used
+const AU_STATES = { 'South Australia':'SA', 'New South Wales':'NSW', 'Victoria':'VIC', 'Queensland':'QLD',
+  'Western Australia':'WA', 'Tasmania':'TAS', 'Northern Territory':'NT', 'Australian Capital Territory':'ACT' };
+function placeLabel(c){
+  const town = c.name || S.rev?.name || 'Selected location';
+  const country = c.sys.country || S.rev?.country || '';
+  const region = country === 'AU' && S.rev?.state ? (AU_STATES[S.rev.state] || S.rev.state) : country;
+  return region ? `${town}, ${region}` : town;
+}
 const dewPoint = (t, rh) => { const a=17.62,b=243.12,g=Math.log(rh/100)+a*t/(b+t); return b*g/(a-g); };
 
 function toast(msg){ const t=$('toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toast.h); toast.h=setTimeout(()=>t.classList.remove('show'),4000); }
@@ -381,12 +390,13 @@ async function loadAll(force){
   S.stale = null;
   const q = qs(lat, lon);
   try {
-    const [cur, fc, aq] = await Promise.all([
+    const [cur, fc, aq, rev] = await Promise.all([
       getJSON(`${API}/weather?${q}`, force),
       getJSON(`${API}/forecast?${q}`, force),
-      getJSON(`${API}/air?${q}`, force).catch(()=>null)
+      getJSON(`${API}/air?${q}`, force).catch(()=>null),
+      getJSON(`${API}/reverse?${q}`).catch(()=>null)
     ]);
-    Object.assign(S, { cur, fc, aq });
+    Object.assign(S, { cur, fc, aq, rev: Array.isArray(rev) ? rev[0] : null });
     renderAll();
     if (S.stale) {
       const t = new Date(S.stale);
@@ -409,7 +419,7 @@ function renderAll(){
 
 function renderCurrent(){
   const c = S.cur, tz = c.timezone, m = c.main, w = c.weather[0];
-  $('place').textContent = `${c.name || 'Selected location'}${c.sys.country ? ', ' + c.sys.country : ''}`;
+  $('place').textContent = placeLabel(c);
   const now = Math.floor(Date.now()/1000);
   const d = shift(now, tz);
   $('localtime').textContent = `${DAYS[d.getUTCDay()]} ${d.getUTCDate()} ${d.toLocaleString('en',{month:'long',timeZone:'UTC'})} · ${hm(now,tz)} local`;
