@@ -2,7 +2,7 @@
  * Bump VERSION whenever you change index.html, icons or this file,
  * so installed copies pick up the update.
  */
-const VERSION = 'skyline-v2';
+const VERSION = 'skyline-v3';
 
 const SHELL = [
   './',
